@@ -12,6 +12,7 @@
 #include <QPixmap>
 #include <QProcess>
 #include <QScreen>
+#include <QTimer>
 
 #if defined(Q_OS_LINUX) || defined(Q_OS_UNIX)
 #include "request.h"
@@ -21,6 +22,8 @@
 #include <QUrl>
 #include <QUuid>
 #endif
+
+constexpr auto XDG_PORTAL_RESPONSE_TIMEOUT = std::chrono::seconds(5);
 
 ScreenGrabber::ScreenGrabber(QObject* parent)
   : QObject(parent)
@@ -95,6 +98,18 @@ void ScreenGrabber::freeDesktopPortal(bool& ok, QPixmap& res)
       "",
       QMap<QString, QVariant>({ { "handle_token", QVariant(token) },
                                 { "interactive", QVariant(false) } }));
+
+    // since it's not an "interactive" request,
+    // xdg-desktop-portal should respond almost immediately
+    // so it makes sense to interrupt the request if it takes too long
+    QTimer::singleShot(XDG_PORTAL_RESPONSE_TIMEOUT, this, [&loop] {
+        AbstractLogger::error()
+          << tr("Failed to get a response from xdg-desktop-portal before "
+                "timeout occured."
+                "Make sure you have an xdg-desktop-portal implementation "
+                "installed and configured");
+        loop.quit();
+    });
 
     loop.exec();
     QObject::disconnect(conn);
